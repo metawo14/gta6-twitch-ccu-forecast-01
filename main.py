@@ -130,6 +130,29 @@ def features_for(member, log_p1, f2):
     return [log_p1, f2]
 
 
+def feature_ranges(rows):
+    """Per-member [min, max] of every fitted feature over the training launches."""
+    ranges = {}
+    for member in ("A", "B", "C"):
+        vectors = [features_for(member, log_p1, f2) for log_p1, f2, _ in rows]
+        ranges[member] = [
+            (min(v[i] for v in vectors), max(v[i] for v in vectors))
+            for i in range(len(vectors[0]))
+        ]
+    return ranges
+
+
+def clamp_features(feats, ranges):
+    """Keep a target's features inside the range the fit saw, so no member extrapolates.
+
+    The final case can sit far outside it: its category held a few thousand viewers before the
+    launch, so f2 (how far hour 1 already rose above the quiet pre-release evening) is several
+    log units above anything in the training launches, and an unclamped slope there multiplies
+    hour 1 by a factor no category on Twitch reaches. Clamping costs nothing in range.
+    """
+    return [min(max(v, lo), hi) for v, (lo, hi) in zip(feats, ranges)]
+
+
 def training_rows(case):
     """One row per usable comparable: (log p1, f2, {hour: log ratio})."""
     day = parse_ts(case["day_start"])
@@ -211,15 +234,29 @@ FALLBACK_FITS = {
 }
 
 
+# The feature range those baked fits saw, per member, one [min, max] per feature: taken from the
+# same 37 training rows in this session, so the fallback path clamps a target exactly as the
+# runtime path does.
+FALLBACK_RANGES = {
+    "A": [[5.0998664278, 12.4292161968], [-5.4236430739, 1.6895423917]],
+    "B": [[5.0998664278, 13.6821562925], [0.2600863758, 1.8720140081], [-5.4236430739, 1.6895423917]],
+    "C": [[5.0998664278, 13.6821562925], [-5.4236430739, 1.6895423917]],
+}
+
+
 def fit_members(case):
-    """Per-hour member fits. Falls back to baked coefficients when too few comparables."""
+    """Per-hour member fits plus the feature ranges they saw.
+
+    Falls back to the baked coefficients (fitted once on the kit's comparables, whose ranges are
+    the widest this build sees) when a case carries fewer than 10 usable comparables.
+    """
     rows = training_rows(case)
     if len(rows) < 10:
-        return FALLBACK_FITS
+        return FALLBACK_FITS, FALLBACK_RANGES
     fits = {}
     for h in HOURS:
         fits[h] = {m: fit_hour(rows, h, m) for m in ("A", "B", "C")}
-    return fits
+    return fits, feature_ranges(rows)
 
 
 def member_rows(fits, member, target_feats):
@@ -258,9 +295,10 @@ def forecast_case(case, name):
         peak = p1
     log_p1 = math.log(p1)
     f2 = log_p1 - math.log(max(1.0, float(peak)))
-    target_feats = {m: features_for(m, log_p1, f2) for m in ("A", "B", "C")}
-
-    fits = fit_members(case)
+    fits, ranges = fit_members(case)
+    target_feats = {
+        m: clamp_features(features_for(m, log_p1, f2), ranges[m]) for m in ("A", "B", "C")
+    }
     member_logs = {m: member_rows(fits, m, target_feats[m]) for m in ("A", "B", "C")}
 
     hours = []
