@@ -20,11 +20,12 @@ KIT = Path("/home/hatch/workspace/makefun/gta6-twitch-ccu-forecast-01-kit/gta6-t
 ENTRY = Path(__file__).resolve().parent
 LEVELS = [0.05, 0.25, 0.5, 0.75, 0.95]
 
+ANSWER_DIR = Path(os.environ.get("ANSWER_DIR", "/tmp"))
 ANSWERS = {
-    "p00": Path("/tmp/sg-wolverine.json"),
-    "p01": Path("/tmp/sg-rdr2.json"),
-    "p02": Path("/tmp/sg-gow.json"),
-    "p03": Path("/tmp/sg-spiderman2.json"),
+    "p00": ANSWER_DIR / "sg-wolverine.json",
+    "p01": ANSWER_DIR / "sg-rdr2.json",
+    "p02": ANSWER_DIR / "sg-gow.json",
+    "p03": ANSWER_DIR / "sg-spiderman2.json",
 }
 EXPECTED_P1 = {"p00": 23357, "p01": 116550, "p02": 269517, "p03": 119087}
 QUESTIONS = {"p00": "2026-09-15", "p01": "2018-10-26", "p02": "2022-11-09", "p03": "2023-10-20"}
